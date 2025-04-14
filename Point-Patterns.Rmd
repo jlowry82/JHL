@@ -1,0 +1,298 @@
+---
+title: "Point Pattern Analysis"
+author: "John Lowry"
+date: "2024-01-14"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Acknowledgements and helpful resources:
+* Part 2 of *Intro to GIS and Spatial Analysis* by Manuel Gimond (https://mgimond.github.io/Spatial/index.html)
+* Ch 8 of *An Intro to Spatial Analysis and Mapping in R* by Brunsdon and Comber (https://bookdown.org/lexcomber/brunsdoncomber2e/)
+* David O'Sullivan (https://github.com/DOSull)
+
+### Learning outcomes--students will be able to:
+
+* Explain what the **spatstat** package is used for and what and the *ppp* object is
+* Explore spatial point patterns using quadrat analysis and KDE
+* Measure spatial point patterns using ANN
+* Compare a point patterns to CSR (complete spatial randomness) with K and L functions
+
+### Libraries and functions introduced in this tutorial:
+Base and other functions: **data()**, **par()**, **contour()**, **mean()**, **abline()**, **hist()**, **sqrt()**  
+**spatstat** library functions: **quadradcount()**, **intensity()**, **density()**, **bw.diggle()**, **bw.ppl()**, **nndist()**, **area()**, **npoint()**, **kest()**, **rpoispp()**, **envelope()**  
+
+### Preparation and how to proceed
+We will use data from the **spatstat** package for the tutorial which provides the functions and classes for point pattern analysis. For the assignment you will read data into R from a GIS file.
+
+You can run code chunks from this tutorial by copying-and-pasting them into a R script you create for the tutorial (e.g. point_patterns.R). I stress the importance of trying to understand the code rather than mindlessly copying-and-pasting. This will benefit you when you do your assignment. 
+
+For your report you can first write an R-script, but then you should use R-Markdown to compile your report. Your report should include code and *relevant* output (leave out warnings and other non-relevant output) of your work woven with a well-written narrative demonstrating your understanding. 
+
+Data for the assignment part of this lab is found in the *Data* folder.  
+
+## Intro to **spatstat** and *ppp* data objects
+The **spatstat** package provides classes and functions specifically for spatial point pattern analysis. The spatial object class used by **spatstat** is the *ppp* which is different from the *sf* class of the **sf** package (that we've used previously). The **spatstat** package comes with data that we'll use for this tutorial. These are point data that offer 'textbook-clear' examples of spatial patterns, making them ideal for learning.
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+# Author: <your name here>
+# Purpose:  Learn about spatial point pattern analysis
+# Date: Jan 14, 2024
+
+# Load packages
+library(spatstat)         # classes and functions for spatial point pattern analysis
+
+# get the datasets
+data(cells)
+data(japanesepines)
+data(redwoodfull)
+
+# give them shortened names
+ce <- cells
+jp <- japanesepines
+rw <- redwoodfull
+```
+The **par()** function is a base function (i.e., not from any package) that allows us to set or query graphical parameters of our display. We'll set it so that the next three plots will be be plotted in a row of three by specifying the argument **mfrow** (*multiple figures by row*) to a vector with a length of 3. If we want to return display parameters to default settings we can use the function **dev.off()**.
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+# set graphical parameters to a row of 3; then plot the three ppp from spatstat
+par(mfrow = c(1,3))
+plot(ce, main = 'Biological cells', axes=TRUE)
+plot(jp, main = 'Japanese Pines', axes=TRUE)
+plot(rw, main = 'Redwoods', axes=TRUE)
+
+# Basic information about the ppp
+ce
+jp
+rw
+```
+Notice that the data points are each in a 1 x 1 area, the units of which don't matter. There are 42 points, 65 points, and 195 points in the ce, jp, and rw data respectively. If you want to learn more about the data you can type *?japanesepines* at the console window, for example.
+
+## Density based analysis
+Density based approaches to point pattern analysis count the number of points per unit area. With quadrat analysis density is measured by the count of points within areas of equal size (quadrats). We should be cautious with quadrat analysis because the choice of quadrat size influences the outcome, and the approach does not take into consideration distance between points.  
+
+Let's take a look at some examples. The code below uses the **quadratcount()** function to create a data object that counts the number of points for each quadrat. The **intensity()** function takes this a step further, calculating the density of points for each quadrat.
+
+If you want, copy the code below and run it with one of the other *ppp* data. After you copy the code chunk below, select your code (in your R script or R Markdown file), and from the **Edit** menu choose **Find**, then *replace* rw with jp, for example. 
+```{r}
+# set display for 1 row with 3 plots
+par(mfrow = c(1,3))
+# create a quadrat object with default quadrats
+Q <- quadratcount(rw)
+# plot the quadrat object, specify title & size of title
+plot(Q, main="rw-default", cex=0.75)
+# add the points for rw to the plot in red, symbol 20
+plot(rw, add=TRUE, col='red', pch=20)
+
+# same as above, but specify 3 quadrats x 3 quadrats
+Q_3x3 <- quadratcount(rw, nx=3, ny=3)
+plot(Q_3x3, main="rw-3x3 ", cex=0.75)
+plot(rw, add=TRUE, col='red', pch=20)
+
+# same as above, but specify 10 quadrats x 10 quadrats
+Q_10x10 <- quadratcount(rw, nx=10, ny=10)
+plot(Q_10x10, main="rw-10x10 ", cex=0.75)
+plot(rw, add=TRUE, col='red', pch=20)
+
+# calculate density for each quadrat Q, and plot density as an image
+plot(intensity(Q, image=TRUE), main ="rw-dens", las=1 )
+plot(intensity(Q_3x3, image=TRUE), main ="rw-dens3x3", las=1 )
+plot(intensity(Q_10x10, image=TRUE), main ="rw-dens10x10", las=1 )
+
+```
+
+*Kernel Density Estimation* (KDE) deals with the issue of subjectivity of choosing quadrat size. Well, mostly. With KDE, a kernel, defined by a density function, moves over the points to create a *density surface* that represents the point pattern. With KDE there is still some subjectivity in the choice of the *bandwidth* for the density function. 
+
+The function in **spatstat** is **density()** with the bandwith specified by the **sigma** argument. Two other functions, **bw.diggle()** and **bw.ppl()**, are available to recommend an appropriate bandwidth based on the data. Remember, however, that KDE (and quadrat analysis) are best used as *exploratory* methods, and a way of visualizing point patterns. It is not uncommon to choose a bandwidth that 'looks good' if it visually conveys the pattern of the data well. The best approach is with experimentation as we do below.  Think about how you would visually compare the point density of the three *ppp* data using KDE. 
+
+```{r}
+par(mfrow = c(2,3))
+
+# bandwith 0.05
+d05 <- density(rw, sigma = 0.05)
+plot(d05, main="sigma=0.05")
+contour(d05, add = T)
+
+# bandwidth 0.1
+d10 <- density(rw, sigma = 0.1)
+plot(d10, main="sigma=0.10")
+contour(d10, add = T)
+
+# bandwidth 0.25
+d25 <- density(rw, sigma = 0.25)
+plot(d25, main="sigma=0.25")
+contour(d25, add = T)
+
+# use default sigma (not specified)
+def <-density(rw)
+plot(def, main="sigma=default")
+contour(def, add=T)
+
+# specify sigma with bw.diggle() function
+d_diggle <-density(rw, bw.diggle(rw))
+plot(d_diggle, main=paste("sigma=", as.character(round(bw.diggle(rw),2))))
+contour(d_diggle, add=T)
+
+# specify sigma with bw.ppl() function
+d_ppl <-density(rw, bw.ppl(rw))
+plot(d_ppl, main=paste("sigma=", as.character(round(bw.ppl(rw),2))))
+contour(d_ppl, add=T)
+```
+
+## Distance based analysis
+*Average Nearest Neighbor* (ANN) is a common distance-based method for measuring spatial point patterns. The approach involves calculating the average distance between all points in the data (observed distance) and comparing this to the average distance that would be expected by chance (expected distance). This can be done in ArcGIS with the *Average Nearest Neighbor* tool. 
+
+There isn't a function that calculates ANN specifically in **spatstat** but we can use other functions to get there...and learn along the way. We start with the **nndist()** function to  calculate the distances between all the points in the data, then calculate their mean with the base function **mean()**. We'll create a histogram and use **abline()** (*line from a to b*)to draw a straight line to mark the mean.
+```{r}
+# calculate distances for each of the data
+nnd_ce <- nndist(ce)
+nnd_jp <- nndist(jp)
+nnd_rw <- nndist(rw)
+
+# calculate the mean distance for each distribution
+mnnd_ce <- mean(nnd_ce)
+mnnd_jp <- mean(nnd_jp)
+mnnd_rw <- mean(nnd_rw)
+
+# set display parameters
+par(mfrow = c(1,3))
+
+# histograms of the distances with mean red linewidth of 2
+hist(nnd_ce, main="Distances for ce", xlab="Distance")
+abline(v=mnnd_ce, col="red", lwd=2)
+hist(nnd_jp, main="Distances for jp", xlab="Distance")
+abline(v=mnnd_jp, col="red", lwd=2)
+hist(nnd_rw, main="Distances for rw", xlab="Distance")
+abline(v=mnnd_rw, col="red", lwd=2)
+```
+
+One of the properties of the *ppp* object is it's *window*. The window for each of the *ppp* data we're working with is 1 unit x 1 unit (remember we saw this at the beginning of the tutorial). We can calculate the area of a window using the **area()** function and the number of points in the window with the **npoint()** function. These are what we need to calculate the *expected distance* between points under randomness. Recall the equation from lecture.
+```{r}
+# calculate expected distances
+emnnd_ce <- 0.5/sqrt(npoints(ce)/area(ce))
+emnnd_jp <- 0.5/sqrt(npoints(jp)/area(jp))
+emnnd_rw <- 0.5/sqrt(npoints(ce)/area(rw))
+
+# calculate the ANN ratio
+ann_cd <- mnnd_ce / emnnd_ce
+ann_cd
+ann_jp <- mnnd_jp / emnnd_jp
+ann_jp
+ann_rw <- mnnd_rw / emnnd_rw
+ann_rw
+
+# set display parameters
+par(mfrow = c(1,3))
+
+# display both observed mean and expected mean on the histograms
+hist(nnd_ce, main="Distances for ce", xlab="Distance")
+abline(v=mnnd_ce, col="red", lwd=2)
+abline(v=emnnd_ce, col="red", lwd=2, lty = 'dashed')
+
+hist(nnd_jp, main="Distances for jp", xlab="Distance")
+abline(v=mnnd_jp, col="red", lwd=2)
+abline(v=emnnd_jp, col="red", lwd=2, lty = 'dashed')
+
+hist(nnd_rw, main="Distances for rw", xlab="Distance")
+abline(v=mnnd_rw, col="red", lwd=2)
+abline(v=emnnd_rw, col="red", lwd=2, lty='dashed')
+```
+
+Are the ANN ratios what you anticipated based on what you saw plotted at the beginning of the tutorial? Recall from lecture, an ANN ratio > 1 indicates a dispersed pattern, ANN ~ 1 indicates a random pattern, and ANN < 1 indicates a clustered pattern. It's possible to calculate the probability the ANN index occurs by chance (a p-value), but that's beyond the scope of this tutorial. See the Manuel Gimond online text if you're interested. How would the ANN index (ratio) differ if we specified an area of 2 instead of the area of 1?
+
+## Ripley's K and L functions
+Distance-based point pattern analysis can be extended to measure clustering (or randomness or dispersion) of points over a range of distances. This was discussed in greater detail in lecture. Here, we'll use R to explore spatial patterns in the data using the K and L functions. In ArcGIS this analysis is done with the *Multi-Distance Spatial Cluster Analysis* tool. 
+
+The K function is used for measuring second-order processes in point patterns--that is, patterns that arise because of effects, or interaction, between points (e.g. contagious disease). Conceptually it involves counting the number of *other points* around every point in a distribution at a range of distances, and comparing this to what would be expected in a random pattern referred to as *complete spatial randomness* (CSR). It is best understood, and conveyed, through graphs. The **spatsat** function is **Kest()**, the *est* implying that K is an *estimate* of the spatial intensity of points at a range of distances (*r*).
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+# K-function with border correction
+k_rw<-Kest(rw, correction='border')
+plot(k_rw)
+```
+
+The K function must take into consideration an undercount of points at the study area boundary using boundary correction methods. The most simple, the **border** method, is applied here, and essentially reduces the analysis area by a certain amount (refer to lecture). 
+
+In the above graph the black line represents the estimated K function for the data. The dashed red line indicates the K function for a random pattern (CSR modeled with a Poisson spatial process). At distances (r) when the black line is above the dashed red line the estimate suggests a clustered pattern, and when the estimated K function is below the CSR line, a dispersed pattern. Where the two lines are the same, the estimate for the observed data is considered random. What we see here is that for the redwood data there is clustering at short distances (redwood saplings tend to be clustered around each other) but at larger distances (r) the pattern is random and at even larger distances the pattern becomes dispersed. 
+
+While this graph is informative, we may want to be more rigorous with our analysis. The CSR (red-dashed) line is based on a single random sample. Let's take a look at this idea of complete spatial randomness (CSR) a bit closer. We can create a random point pattern using a Poisson process with **rpoispp()**. The argument **lambda** indicates the number of points. Notice that the code for each of the sample point patterns is exactly the same, but each random point pattern is different. 
+
+```{r}
+par(mfrow=c(1,3))
+# generate three samples of CSR (complete spatial randomness)
+X <- rpoispp(lambda = 100)
+plot(X)
+X <- rpoispp(lambda = 100)
+plot(X)
+X <- rpoispp(lambda = 100)
+plot(X)
+```
+
+To account for sampling variation we can simulate high and low values for the CSR that can be represented as an *envelope*. We use the **envelope()** function which requires arguments for the *ppp* object, the K function, and the correction type.
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+# create graph with simulation for CSR as an envelope
+k_rw_env <- envelope(rw,Kest,correction='border')
+plot(k_rw_env)
+```
+
+From this output we can be confident that the redwood saplings form a clustered pattern up to a distance of about 0.10 (remember, there are no units for these data) but after that, our confidence diminishes. You may nave noticed the legend changed--*Kbord* is now *Kobs* and *Kpois* is now *Ktheo*--this because the **envelope()** function produces a slightly different legend for the graph. In both cases the '^' indicates an *estimate*.
+
+The K function will always have a curved (quadratic) shape which sometimes makes it difficult to interpret. A solution to this is the L function, which is a simple transformation that makes the CSR function linear. Here, we specify **Lest** for the function argument. 
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+# create graph with L function using CSR envelope
+l_rw_env <- envelope(rw,Lest,correction='border')
+plot(l_rw_env)
+```
+
+Often point pattern analysis is most interesting when comparing spatial processes of different phenomena. So, let's compare spatial point patterns at multiple distances using the L function for the three *ppp* data we've been working with.
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+# set display parameters
+par(mfrow = c(1,3))
+
+# create graph with L function using CSR envelope
+l_ce_env <- envelope(ce,Lest,correction='border')
+plot(l_ce_env, main="Biological Cells")
+
+l_jp_env <- envelope(jp,Lest,correction='border')
+plot(l_jp_env, main="Japanese Pines")
+
+l_rw_env <- envelope(rw,Lest,correction='border')
+plot(l_rw_env, main="Redwoods")
+
+# for comparison plot spatial data
+plot(ce, main = 'Biological cells', axes=TRUE)
+plot(jp, main = 'Japanese Pines', axes=TRUE)
+plot(rw, main = 'Redwoods', axes=TRUE)
+```
+
+First, make sure you can interpret the results (i.e, the graphs). Next, can you think of a scientific or theoretical (e.g. biological or ecological) explanation for what you interpret from the graphs?  Based on what you learned in lecture about first-order and second-order point processes (i.e., what's causing the pattern) do you think the observed pattern is mostly caused by a first-order or second-order process?
+
+## Conclusion
+*Bom trabalho!* (Good work! in Portuguese) You have learned about four different ways to analyse point data--quadrat analysis, kernel density estimation (KDE), average nearest neighbor (ANN), and Ripley's K and L functions. You should see, and appreciate, the difference between density-based methods and distance-based methods. Think about what you learned in lecture about these methods. Which is better for measuring first-order processes?  Which is better for second-order processes?
+
+You should be feeling more comfortable with R coding. While it's tempting to just copy-and-paste without thinking about what the code is doing, it's better in long run if you make the effort to *read* the code. 
+
+### Getting GIS data into R as a *ppp* object
+For your assignment you'll need to input GIS data into R to do your analysis. Since the **spatstat** packages uses the *ppp* object, you'll need to read in the shapefile as an sf object and then coerce it to a *ppp* object. 
+
+Make sure you have set your Working Directory to the folder for this lab.
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+# use sf library to input shapefile as sf object
+library(sf)
+cdths_sf <-read_sf("Data/CholeraDeaths.shp")
+cdths_sf
+# convert sf object to ppp object
+cdths_ppp <-as.ppp(cdths_sf)
+cdths_ppp
+plot(cdths_ppp, main="Cholera Deaths", axes=TRUE)
+```
+
